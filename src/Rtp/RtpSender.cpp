@@ -28,7 +28,11 @@ RtpSender::RtpSender(EventPoller::Ptr poller) {
 }
 
 RtpSender::~RtpSender() {
-    flush();
+    try {
+        flush();
+    } catch (std::exception &ex) {
+        WarnL << "Exception occurred: " << ex.what();
+    }
 }
 
 void RtpSender::startSend(const MediaSourceEvent::SendRtpArgs &args, const function<void(uint16_t local_port, const SockException &ex)> &cb){
@@ -136,7 +140,7 @@ void RtpSender::startSend(const MediaSourceEvent::SendRtpArgs &args, const funct
                     cb(0, SockException(Err_other, ex.what()));
                     return;
                 }
-                strong_self->_socket_rtp->bindPeerAddr((struct sockaddr *)&addr);
+                strong_self->_socket_rtp->bindPeerAddr((struct sockaddr *)&addr, 0, true);
                 strong_self->onConnect();
                 cb(strong_self->_socket_rtp->get_local_port(), SockException());
             });
@@ -169,16 +173,9 @@ void RtpSender::createRtcpSocket() {
         return;
     }
 
-    struct sockaddr_storage addr;
-    //目标rtp端口
-    SockUtil::get_sock_peer_addr(_socket_rtp->rawFD(), addr);
-    //绑定目标rtcp端口(目标rtp端口 + 1)
-    switch (addr.ss_family) {
-        case AF_INET: ((sockaddr_in *)&addr)->sin_port = htons(ntohs(((sockaddr_in *)&addr)->sin_port) + 1); break;
-        case AF_INET6: ((sockaddr_in6 *)&addr)->sin6_port = htons(ntohs(((sockaddr_in6 *)&addr)->sin6_port) + 1); break;
-        default: assert(0); break;
-    }
-    _socket_rtcp->bindPeerAddr((struct sockaddr *)&addr);
+    // 绑定目标rtcp端口(目标rtp端口 + 1)
+    auto addr = SockUtil::make_sockaddr(_socket_rtp->get_peer_ip().data(), _socket_rtp->get_peer_port() + 1);
+    _socket_rtcp->bindPeerAddr((struct sockaddr *)&addr, 0, true);
 
     _rtcp_context = std::make_shared<RtcpContextForSend>();
     weak_ptr<RtpSender> weak_self = shared_from_this();
@@ -246,6 +243,10 @@ void RtpSender::onConnect(){
 }
 
 bool RtpSender::addTrack(const Track::Ptr &track){
+    if (_args.only_audio && track->getTrackType() == TrackVideo) {
+        // 如果只发送音频则忽略视频
+        return false;
+    }
     return _interface->addTrack(track);
 }
 
@@ -265,6 +266,10 @@ void RtpSender::flush() {
 
 //此函数在其他线程执行
 bool RtpSender::inputFrame(const Frame::Ptr &frame) {
+    if (_args.only_audio && frame->getTrackType() == TrackVideo) {
+        // 如果只发送音频则忽略视频
+        return false;
+    }
     //连接成功后才做实质操作(节省cpu资源)
     return _is_connect ? _interface->inputFrame(frame) : false;
 }
@@ -328,7 +333,7 @@ void RtpSender::onFlushRtpList(shared_ptr<List<Buffer::Ptr> > rtp_list) {
 
 void RtpSender::onErr(const SockException &ex) {
     _is_connect = false;
-    WarnL << "send rtp connection lost: " << ex.what();
+    WarnL << "send rtp connection lost: " << ex;
     onClose(ex);
 }
 

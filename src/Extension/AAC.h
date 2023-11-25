@@ -44,7 +44,7 @@ public:
     /**
      * 获取aac 配置信息
      */
-    const std::string &getAacCfg() const;
+    const std::string &getConfig() const;
 
     bool ready() override;
     CodecId getCodecId() const override;
@@ -52,6 +52,7 @@ public:
     int getAudioSampleRate() const override;
     int getAudioSampleBit() const override;
     bool inputFrame(const Frame::Ptr &frame) override;
+    bool update() override;
 
 private:
     void onReady();

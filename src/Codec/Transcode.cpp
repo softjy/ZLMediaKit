@@ -436,6 +436,7 @@ FFmpegDecoder::FFmpegDecoder(const Track::Ptr &track, int thread_num, const std:
         av_dict_set(&dict, "zerolatency", "1", 0);
         av_dict_set(&dict, "strict", "-2", 0);
 
+#ifdef AV_CODEC_CAP_TRUNCATED
         if (codec->capabilities & AV_CODEC_CAP_TRUNCATED) {
             /* we do not send complete frames */
             _context->flags |= AV_CODEC_FLAG_TRUNCATED;
@@ -443,6 +444,7 @@ FFmpegDecoder::FFmpegDecoder(const Track::Ptr &track, int thread_num, const std:
             // 此时业务层应该需要合帧
             _do_merger = true;
         }
+#endif
 
         int ret = avcodec_open2(_context.get(), codec, &dict);
         av_dict_free(&dict);
@@ -672,7 +674,7 @@ FFmpegFrame::Ptr FFmpegSws::inputFrame(const FFmpegFrame::Ptr &frame, int &ret, 
         auto out = std::make_shared<FFmpegFrame>();
         if (!out->get()->data[0]) {
             if (data) {
-                avpicture_fill((AVPicture *) out->get(), data, _target_format, target_width, target_height);
+                av_image_fill_arrays(out->get()->data, out->get()->linesize, data, _target_format, target_width, target_height, 1);
             } else {
                 out->fillPicture(_target_format, target_width, target_height);
             }

@@ -21,15 +21,18 @@ class TSMediaSourceMuxer final : public MpegMuxer, public MediaSourceEventInterc
 public:
     using Ptr = std::shared_ptr<TSMediaSourceMuxer>;
 
-    TSMediaSourceMuxer(const std::string &vhost,
-                       const std::string &app,
-                       const std::string &stream_id,
-                       const ProtocolOption &option) : MpegMuxer(false) {
+    TSMediaSourceMuxer(const MediaTuple& tuple, const ProtocolOption &option) : MpegMuxer(false) {
         _option = option;
-        _media_src = std::make_shared<TSMediaSource>(vhost, app, stream_id);
+        _media_src = std::make_shared<TSMediaSource>(tuple);
     }
 
-    ~TSMediaSourceMuxer() override { MpegMuxer::flush(); };
+    ~TSMediaSourceMuxer() override {
+        try {
+            MpegMuxer::flush();
+        } catch (std::exception &ex) {
+            WarnL << ex.what();
+        }
+    };
 
     void setListener(const std::weak_ptr<MediaSourceEvent> &listener){
         setDelegate(listener);

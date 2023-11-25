@@ -21,6 +21,7 @@ void TsPlayer::play(const string &url) {
     TraceL << "play http-ts: " << url;
     _play_result = false;
     _benchmark_mode = (*this)[Client::kBenchmarkMode].as<int>();
+    setProxyUrl((*this)[Client::kProxyUrl]);
     setHeaderTimeout((*this)[Client::kTimeoutMS].as<int>());
     setBodyTimeout((*this)[Client::kMediaTimeoutMS].as<int>());
     setMethod("GET");
@@ -34,7 +35,12 @@ void TsPlayer::teardown() {
 void TsPlayer::onResponseCompleted(const SockException &ex) {
     if (!_play_result) {
         _play_result = true;
-        onPlayResult(ex);
+        if (!ex && responseBodyTotalSize() == 0 && responseBodySize() == 0) {
+            //if the server does not return any data, it is considered a failure
+            onShutdown(ex);
+        } else {
+            onPlayResult(ex);
+        }
     } else {
         onShutdown(ex);
     }
@@ -44,7 +50,7 @@ void TsPlayer::onResponseCompleted(const SockException &ex) {
 void TsPlayer::onResponseBody(const char *buf, size_t size) {
     if (!_play_result) {
         _play_result = true;
-        onPlayResult(SockException(Err_success, "play http-ts success"));
+        onPlayResult(SockException(Err_success, "read http-ts stream successfully"));
     }
     if (!_benchmark_mode) {
         HttpTSPlayer::onResponseBody(buf, size);

@@ -201,13 +201,12 @@ void NackContext::clearNackStatus(uint16_t seq) {
     if (it == _nack_send_status.end()) {
         return;
     }
-    auto rtt = getCurrentMillisecond() - it->second.update_stamp;
+    //收到重传包与第一个nack包间的时间约等于rtt时间
+    auto rtt = getCurrentMillisecond() - it->second.first_stamp;
     _nack_send_status.erase(it);
 
-    if (rtt >= 0) {
-        // rtt不能小于0
-        _rtt = rtt;
-    }
+    // 限定rtt在合理有效范围内
+    _rtt = max<int>(10, min<int>(rtt, kNackMaxMS / kNackMaxCount));
 }
 
 void NackContext::recordNack(const FCI_NACK &nack) {
@@ -259,7 +258,7 @@ uint64_t NackContext::reSendNack() {
     for (auto it = nack_rtp.begin(); it != nack_rtp.end();) {
         if (pid == -1) {
             pid = *it;
-            vec.resize(FCI_NACK::kBitSize, false);
+            vec.assign(FCI_NACK::kBitSize, false);
             ++it;
             continue;
         }
@@ -279,7 +278,7 @@ uint64_t NackContext::reSendNack() {
     }
 
     // 没有任何包需要重传时返回0，否则返回下次重传间隔(不得低于5ms)
-    return _nack_send_status.empty() ? 0 : max(_rtt, 5);
+    return _nack_send_status.empty() ? 0 : _rtt;
 }
 
 } // namespace mediakit

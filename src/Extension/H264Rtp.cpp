@@ -13,9 +13,7 @@
 
 namespace mediakit{
 
-#if defined(_WIN32)
 #pragma pack(push, 1)
-#endif // defined(_WIN32)
 
 class FuFlags {
 public:
@@ -30,11 +28,9 @@ public:
     unsigned end_bit: 1;
     unsigned start_bit: 1;
 #endif
-} PACKED;
+};
 
-#if defined(_WIN32)
 #pragma pack(pop)
-#endif // defined(_WIN32)
 
 H264RtpDecoder::H264RtpDecoder() {
     _frame = obtainFrame();
@@ -48,13 +44,15 @@ H264Frame::Ptr H264RtpDecoder::obtainFrame() {
 
 bool H264RtpDecoder::inputRtp(const RtpPacket::Ptr &rtp, bool key_pos) {
     auto seq = rtp->getSeq();
-    auto ret = decodeRtp(rtp);
-    if (!_gop_dropped && seq != (uint16_t) (_last_seq + 1) && _last_seq) {
+    auto last_is_gop = _is_gop;
+    _is_gop = decodeRtp(rtp);
+    if (!_gop_dropped && seq != (uint16_t)(_last_seq + 1) && _last_seq) {
         _gop_dropped = true;
         WarnL << "start drop h264 gop, last seq:" << _last_seq << ", rtp:\r\n" << rtp->dumpString();
     }
     _last_seq = seq;
-    return ret;
+    // 确保有sps rtp的时候，gop从sps开始；否则从关键帧开始
+    return _is_gop && !last_is_gop;
 }
 
 /*
@@ -78,7 +76,7 @@ bool H264RtpDecoder::singleFrame(const RtpPacket::Ptr &rtp, const uint8_t *ptr, 
     _frame->_buffer.assign("\x00\x00\x00\x01", 4);
     _frame->_buffer.append((char *) ptr, size);
     _frame->_pts = stamp;
-    auto key = _frame->keyFrame();
+    auto key = _frame->keyFrame() || _frame->configFrame();
     outputFrame(rtp, _frame);
     return key;
 }
@@ -131,7 +129,7 @@ bool H264RtpDecoder::mergeFu(const RtpPacket::Ptr &rtp, const uint8_t *ptr, ssiz
 
     if (!fu->end_bit) {
         //非末尾包
-        return fu->start_bit ? _frame->keyFrame() : false;
+        return fu->start_bit ? (_frame->keyFrame() || _frame->configFrame()) : false;
     }
 
     //确保下一次fu必须收到第一个包
@@ -209,8 +207,8 @@ void H264RtpEncoder::insertConfigFrame(uint64_t pts){
 
 void H264RtpEncoder::packRtp(const char *ptr, size_t len, uint64_t pts, bool is_mark, bool gop_pos){
     if (len + 3 <= getMaxSize()) {
-        //STAP-A模式打包小于MTU
-        packRtpStapA(ptr, len, pts, is_mark, gop_pos);
+        // 采用STAP-A/Single NAL unit packet per H.264 模式
+        packRtpSmallFrame(ptr, len, pts, is_mark, gop_pos);
     } else {
         //STAP-A模式打包会大于MTU,所以采用FU-A模式
         packRtpFu(ptr, len, pts, is_mark, gop_pos);
@@ -220,8 +218,8 @@ void H264RtpEncoder::packRtp(const char *ptr, size_t len, uint64_t pts, bool is_
 void H264RtpEncoder::packRtpFu(const char *ptr, size_t len, uint64_t pts, bool is_mark, bool gop_pos){
     auto packet_size = getMaxSize() - 2;
     if (len <= packet_size + 1) {
-        //小于FU-A打包最小字节长度要求，采用STAP-A模式
-        packRtpStapA(ptr, len, pts, is_mark, gop_pos);
+        // 小于FU-A打包最小字节长度要求，采用STAP-A/Single NAL unit packet per H.264 模式
+        packRtpSmallFrame(ptr, len, pts, is_mark, gop_pos);
         return;
     }
 
@@ -257,8 +255,17 @@ void H264RtpEncoder::packRtpFu(const char *ptr, size_t len, uint64_t pts, bool i
     }
 }
 
+void H264RtpEncoder::packRtpSmallFrame(const char *data, size_t len, uint64_t pts, bool is_mark, bool gop_pos) {
+    GET_CONFIG(bool, h264_stap_a, Rtp::kH264StapA);
+    if (h264_stap_a) {
+        packRtpStapA(data, len, pts, is_mark, gop_pos);
+    } else {
+        packRtpSingleNalu(data, len, pts, is_mark, gop_pos);
+    }
+}
+
 void H264RtpEncoder::packRtpStapA(const char *ptr, size_t len, uint64_t pts, bool is_mark, bool gop_pos){
-    //如果帧长度不超过mtu,为了兼容性 webrtc，采用STAP-A模式打包
+    // 如果帧长度不超过mtu,为了兼容性 webrtc，采用STAP-A模式打包
     auto rtp = makeRtp(getTrackType(), nullptr, len + 3, is_mark, pts);
     uint8_t *payload = rtp->getPayload();
     //STAP-A
@@ -268,6 +275,11 @@ void H264RtpEncoder::packRtpStapA(const char *ptr, size_t len, uint64_t pts, boo
     memcpy(payload + 3, (uint8_t *) ptr, len);
 
     RtpCodec::inputRtp(rtp, gop_pos);
+}
+
+void H264RtpEncoder::packRtpSingleNalu(const char *data, size_t len, uint64_t pts, bool is_mark, bool gop_pos) {
+    // Single NAL unit packet per H.264 模式
+    RtpCodec::inputRtp(makeRtp(getTrackType(), data, len, is_mark, pts), gop_pos);
 }
 
 bool H264RtpEncoder::inputFrame(const Frame::Ptr &frame) {

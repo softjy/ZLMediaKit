@@ -51,6 +51,7 @@ private:
     void outputFrame(const RtpPacket::Ptr &rtp, const H265Frame::Ptr &frame);
 
 private:
+    bool _is_gop = false;
     bool _using_donl_field = false;
     bool _gop_dropped = false;
     bool _fu_dropped = true;
@@ -85,6 +86,22 @@ public:
      * @param frame 帧数据，必须
      */
     bool inputFrame(const Frame::Ptr &frame) override;
+
+    /**
+     * 刷新输出所有frame缓存
+     */
+    void flush() override;
+
+private:
+    void packRtp(const char *ptr, size_t len, uint64_t pts, bool is_mark, bool gop_pos);
+    void packRtpFu(const char *ptr, size_t len, uint64_t pts, bool is_mark, bool gop_pos);
+    void insertConfigFrame(uint64_t pts);
+    bool inputFrame_l(const Frame::Ptr &frame, bool is_mark);
+private:
+    Frame::Ptr _sps;
+    Frame::Ptr _pps;
+    Frame::Ptr _vps;
+    Frame::Ptr _last_frame;
 };
 
 }//namespace mediakit{

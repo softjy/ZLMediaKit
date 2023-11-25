@@ -24,9 +24,8 @@ namespace mediakit{
 class Track : public FrameDispatcher , public CodecInfo{
 public:
     using Ptr = std::shared_ptr<Track>;
-    Track(){}
-
-    virtual ~Track(){}
+    Track() = default;
+    virtual ~Track() = default;
 
     /**
      * 是否准备好，准备好才能获取譬如sps pps等信息
@@ -39,6 +38,11 @@ public:
      * 环形缓存和代理关系不能拷贝，否则会关系紊乱
      */
     virtual Track::Ptr clone() = 0;
+
+    /**
+     * 更新track信息，比如触发sps/pps解析
+     */
+    virtual bool update() { return false; }
 
     /**
      * 生成sdp
@@ -177,8 +181,8 @@ private:
 
 class TrackSource{
 public:
-    TrackSource(){}
-    virtual ~TrackSource(){}
+    TrackSource() = default;
+    virtual ~TrackSource() = default;
 
     /**
      * 获取全部的Track
