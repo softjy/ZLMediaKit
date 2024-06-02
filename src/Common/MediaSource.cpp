@@ -1,9 +1,9 @@
 ﻿/*
- * Copyright (c) 2016 The ZLMediaKit project authors. All Rights Reserved.
+ * Copyright (c) 2016-present The ZLMediaKit project authors. All Rights Reserved.
  *
- * This file is part of ZLMediaKit(https://github.com/xia-chu/ZLMediaKit).
+ * This file is part of ZLMediaKit(https://github.com/ZLMediaKit/ZLMediaKit).
  *
- * Use of this source code is governed by MIT license that can be found in the
+ * Use of this source code is governed by MIT-like license that can be found in the
  * LICENSE file in the root of the source tree. All contributing project authors
  * may be found in the AUTHORS file in the root of the source tree.
  */
@@ -60,6 +60,7 @@ ProtocolOption::ProtocolOption() {
     GET_CONFIG(bool, s_add_mute_audio, Protocol::kAddMuteAudio);
     GET_CONFIG(bool, s_auto_close, Protocol::kAutoClose);
     GET_CONFIG(uint32_t, s_continue_push_ms, Protocol::kContinuePushMS);
+    GET_CONFIG(uint32_t, s_paced_sender_ms, Protocol::kPacedSenderMS);
 
     GET_CONFIG(bool, s_enable_hls, Protocol::kEnableHls);
     GET_CONFIG(bool, s_enable_hls_fmp4, Protocol::kEnableHlsFmp4);
@@ -86,6 +87,7 @@ ProtocolOption::ProtocolOption() {
     add_mute_audio = s_add_mute_audio;
     auto_close = s_auto_close;
     continue_push_ms = s_continue_push_ms;
+    paced_sender_ms = s_paced_sender_ms;
 
     enable_hls = s_enable_hls;
     enable_hls_fmp4 = s_enable_hls_fmp4;
@@ -111,7 +113,7 @@ ProtocolOption::ProtocolOption() {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct MediaSourceNull : public MediaSource {
-    MediaSourceNull() : MediaSource("schema", MediaTuple{"vhost", "app", "stream"}) {};
+    MediaSourceNull() : MediaSource("schema", MediaTuple{"vhost", "app", "stream", ""}) {};
     int readerCount() override { return 0; }
 };
 
@@ -489,7 +491,19 @@ MediaSource::Ptr MediaSource::find(const string &vhost, const string &app, const
     if (src) {
         return src;
     }
-    return MediaSource::find(HLS_SCHEMA, vhost, app, stream_id, from_mp4);
+    src = MediaSource::find(TS_SCHEMA, vhost, app, stream_id, from_mp4);
+    if (src) {
+        return src;
+    }
+    src = MediaSource::find(FMP4_SCHEMA, vhost, app, stream_id, from_mp4);
+    if (src) {
+        return src;
+    }
+    src = MediaSource::find(HLS_SCHEMA, vhost, app, stream_id, from_mp4);
+    if (src) {
+        return src;
+    }
+    return MediaSource::find(HLS_FMP4_SCHEMA, vhost, app, stream_id, from_mp4);
 }
 
 void MediaSource::emitEvent(bool regist){
@@ -569,7 +583,7 @@ void MediaInfo::parse(const std::string &url_in){
     auto url = url_in;
     auto pos = url.find("?");
     if (pos != string::npos) {
-        param_strs = url.substr(pos + 1);
+        params = url.substr(pos + 1);
         url.erase(pos);
     }
 
@@ -602,9 +616,10 @@ void MediaInfo::parse(const std::string &url_in){
         stream = stream_id;
     }
 
-    auto params = Parser::parseArgs(param_strs);
-    if (params.find(VHOST_KEY) != params.end()) {
-        vhost = params[VHOST_KEY];
+    auto kv = Parser::parseArgs(params);
+    auto it = kv.find(VHOST_KEY);
+    if (it != kv.end()) {
+        vhost = it->second;
     }
 
     GET_CONFIG(bool, enableVhost, General::kEnableVhost);
@@ -637,6 +652,10 @@ MediaSource::Ptr MediaSource::createFromMP4(const string &schema, const string &
 /////////////////////////////////////MediaSourceEvent//////////////////////////////////////
 
 void MediaSourceEvent::onReaderChanged(MediaSource &sender, int size){
+    GET_CONFIG(bool, enable, General::kBroadcastPlayerCountChanged);
+    if (enable) {
+        NOTICE_EMIT(BroadcastPlayerCountChangedArgs, Broadcast::kBroadcastPlayerCountChanged, sender.getMediaTuple(), sender.totalReaderCount());
+    }
     if (size || sender.totalReaderCount()) {
         //还有人观看该视频，不触发关闭事件
         _async_close_timer = nullptr;

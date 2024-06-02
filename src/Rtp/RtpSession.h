@@ -1,9 +1,9 @@
 ﻿/*
- * Copyright (c) 2016 The ZLMediaKit project authors. All Rights Reserved.
+ * Copyright (c) 2016-present The ZLMediaKit project authors. All Rights Reserved.
  *
- * This file is part of ZLMediaKit(https://github.com/xia-chu/ZLMediaKit).
+ * This file is part of ZLMediaKit(https://github.com/ZLMediaKit/ZLMediaKit).
  *
- * Use of this source code is governed by MIT license that can be found in the
+ * Use of this source code is governed by MIT-like license that can be found in the
  * LICENSE file in the root of the source tree. All contributing project authors
  * may be found in the AUTHORS file in the root of the source tree.
  */
@@ -24,7 +24,8 @@ class RtpSession : public toolkit::Session, public RtpSplitter, public MediaSour
 public:
     static const std::string kStreamID;
     static const std::string kSSRC;
-    static const std::string kOnlyAudio;
+    static const std::string kOnlyTrack;
+    static const std::string kUdpRecvBuffer;
 
     RtpSession(const toolkit::Socket::Ptr &sock);
     ~RtpSession() override;
@@ -51,7 +52,7 @@ private:
     bool _is_udp = false;
     bool _search_rtp = false;
     bool _search_rtp_finished = false;
-    bool _only_audio = false;
+    int _only_track = 0;
     uint32_t _ssrc = 0;
     toolkit::Ticker _ticker;
     std::string _stream_id;

@@ -1,9 +1,9 @@
 ﻿/*
- * Copyright (c) 2016 The ZLMediaKit project authors. All Rights Reserved.
+ * Copyright (c) 2016-present The ZLMediaKit project authors. All Rights Reserved.
  *
- * This file is part of ZLMediaKit(https://github.com/xia-chu/ZLMediaKit).
+ * This file is part of ZLMediaKit(https://github.com/ZLMediaKit/ZLMediaKit).
  *
- * Use of this source code is governed by MIT license that can be found in the
+ * Use of this source code is governed by MIT-like license that can be found in the
  * LICENSE file in the root of the source tree. All contributing project authors
  * may be found in the AUTHORS file in the root of the source tree.
  */
@@ -17,9 +17,8 @@ namespace mediakit {
 
 WebRtcPlayer::Ptr WebRtcPlayer::create(const EventPoller::Ptr &poller,
                                        const RtspMediaSource::Ptr &src,
-                                       const MediaInfo &info,
-                                       bool preferred_tcp) {
-    WebRtcPlayer::Ptr ret(new WebRtcPlayer(poller, src, info, preferred_tcp), [](WebRtcPlayer *ptr) {
+                                       const MediaInfo &info) {
+    WebRtcPlayer::Ptr ret(new WebRtcPlayer(poller, src, info), [](WebRtcPlayer *ptr) {
         ptr->onDestory();
         delete ptr;
     });
@@ -29,8 +28,7 @@ WebRtcPlayer::Ptr WebRtcPlayer::create(const EventPoller::Ptr &poller,
 
 WebRtcPlayer::WebRtcPlayer(const EventPoller::Ptr &poller,
                            const RtspMediaSource::Ptr &src,
-                           const MediaInfo &info,
-                           bool preferred_tcp) : WebRtcTransportImp(poller,preferred_tcp) {
+                           const MediaInfo &info) : WebRtcTransportImp(poller) {
     _media_info = info;
     _play_src = src;
     CHECK(src);
